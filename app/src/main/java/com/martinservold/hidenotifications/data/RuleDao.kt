@@ -1,0 +1,22 @@
+package com.martinservold.hidenotifications.data
+
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface RuleDao {
+    @Query("SELECT * FROM notification_rules ORDER BY createdAt DESC")
+    fun observeAll(): Flow<List<NotificationRule>>
+
+    @Query("SELECT * FROM notification_rules")
+    suspend fun getAll(): List<NotificationRule>
+
+    @Insert
+    suspend fun insert(rule: NotificationRule): Long
+
+    @Delete
+    suspend fun delete(rule: NotificationRule)
+}
