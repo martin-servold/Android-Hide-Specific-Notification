@@ -75,9 +75,11 @@ class NotificationBlockerService : NotificationListenerService() {
         val title = sbn.notification.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
         val text = sbn.notification.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
 
-        if (ruleRepository.matches(cachedRules, sbn.packageName, title)) {
+        val matchedRule = ruleRepository.findMatch(cachedRules, sbn.packageName, title)
+        if (matchedRule != null) {
             cancelNotification(sbn.key)
             NotificationRepository.onRemoved(sbn.key)
+            serviceScope.launch { ruleRepository.incrementDismissCount(matchedRule.id) }
             return
         }
 

@@ -17,5 +17,6 @@ data class NotificationRule(
     val packageName: String,
     val appName: String,
     val titleMatch: String?,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val dismissCount: Int = 0
 )

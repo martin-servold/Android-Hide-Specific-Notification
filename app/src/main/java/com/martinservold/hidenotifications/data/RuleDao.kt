@@ -19,4 +19,7 @@ interface RuleDao {
 
     @Delete
     suspend fun delete(rule: NotificationRule)
+
+    @Query("UPDATE notification_rules SET dismissCount = dismissCount + :amount WHERE id = :ruleId")
+    suspend fun incrementDismissCount(ruleId: Long, amount: Int = 1)
 }

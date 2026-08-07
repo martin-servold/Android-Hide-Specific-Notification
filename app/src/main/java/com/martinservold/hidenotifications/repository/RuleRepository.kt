@@ -21,9 +21,11 @@ class RuleRepository private constructor(context: Context) {
 
     suspend fun snapshot(): List<NotificationRule> = dao.getAll()
 
-    /** True if [packageName]/[title] is covered by an existing block rule. */
-    fun matches(rules: List<NotificationRule>, packageName: String, title: String?): Boolean =
-        rules.any { rule ->
+    suspend fun incrementDismissCount(ruleId: Long, amount: Int = 1) = dao.incrementDismissCount(ruleId, amount)
+
+    /** The rule (if any) that covers [packageName]/[title]. */
+    fun findMatch(rules: List<NotificationRule>, packageName: String, title: String?): NotificationRule? =
+        rules.firstOrNull { rule ->
             rule.packageName == packageName && (rule.titleMatch == null || rule.titleMatch == title)
         }
 

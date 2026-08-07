@@ -73,6 +73,11 @@ private fun RuleRow(rule: NotificationRule, onDelete: () -> Unit) {
                     ?: "Blocking all notifications",
                 style = MaterialTheme.typography.bodyMedium
             )
+            Text(
+                text = if (rule.dismissCount == 1) "Dismissed 1 notification" else "Dismissed ${rule.dismissCount} notifications",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         IconButton(onClick = onDelete) {
             Icon(Icons.Filled.Delete, contentDescription = "Remove rule")

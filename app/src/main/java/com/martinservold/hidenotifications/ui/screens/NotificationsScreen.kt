@@ -125,12 +125,18 @@ private fun LiveNotificationsList() {
             notification = notification,
             onDismiss = { pendingBlock = null },
             onConfirm = { titleMatch ->
+                val immediateDismissCount = if (titleMatch == null) {
+                    notifications.count { it.packageName == notification.packageName }
+                } else {
+                    1
+                }
                 scope.launch {
-                    ruleRepository.addRule(
+                    val ruleId = ruleRepository.addRule(
                         packageName = notification.packageName,
                         appName = notification.appName,
                         titleMatch = titleMatch
                     )
+                    ruleRepository.incrementDismissCount(ruleId, immediateDismissCount)
                 }
                 if (titleMatch == null) {
                     NotificationBlockerService.cancelAllNow(notification.packageName)
