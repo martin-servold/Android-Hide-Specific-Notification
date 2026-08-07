@@ -14,20 +14,27 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.martinservold.hidenotifications.data.TitleMatchType
 import com.martinservold.hidenotifications.model.ActiveNotification
+
+private enum class BlockScope {
+    EXACT_TITLE,
+    CONTAINS_TITLE,
+    WHOLE_APP
+}
 
 /**
  * Shown when the user long-presses a notification in our in-app list. Lets them choose
- * whether to block just this specific notification (by title) or every notification
- * from that app.
+ * how broadly to block: an exact title match, a looser "title contains this" match (so
+ * the rule survives apps that vary the title slightly), or every notification from the app.
  */
 @Composable
 fun BlockNotificationDialog(
     notification: ActiveNotification,
     onDismiss: () -> Unit,
-    onConfirm: (titleMatch: String?) -> Unit
+    onConfirm: (titleMatch: String?, matchType: TitleMatchType) -> Unit
 ) {
-    var blockWholeApp by remember { mutableStateOf(false) }
+    var scope by remember { mutableStateOf(BlockScope.EXACT_TITLE) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -35,27 +42,30 @@ fun BlockNotificationDialog(
         text = {
             Column {
                 Text("From ${notification.appName}")
-                Row(
-                    modifier = Modifier.padding(top = 12.dp),
-                ) {
-                    RadioButton(selected = !blockWholeApp, onClick = { blockWholeApp = false })
-                    Text(
-                        "Only notifications titled \"${notification.title}\"",
-                        modifier = Modifier.padding(start = 8.dp, top = 12.dp)
-                    )
-                }
-                Row {
-                    RadioButton(selected = blockWholeApp, onClick = { blockWholeApp = true })
-                    Text(
-                        "All notifications from ${notification.appName}",
-                        modifier = Modifier.padding(start = 8.dp, top = 12.dp)
-                    )
-                }
+                BlockOptionRow(
+                    label = "Only notifications titled exactly \"${notification.title}\"",
+                    selected = scope == BlockScope.EXACT_TITLE,
+                    onClick = { scope = BlockScope.EXACT_TITLE }
+                )
+                BlockOptionRow(
+                    label = "Notifications with \"${notification.title}\" in the title",
+                    selected = scope == BlockScope.CONTAINS_TITLE,
+                    onClick = { scope = BlockScope.CONTAINS_TITLE }
+                )
+                BlockOptionRow(
+                    label = "All notifications from ${notification.appName}",
+                    selected = scope == BlockScope.WHOLE_APP,
+                    onClick = { scope = BlockScope.WHOLE_APP }
+                )
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                onConfirm(if (blockWholeApp) null else notification.title)
+                when (scope) {
+                    BlockScope.EXACT_TITLE -> onConfirm(notification.title, TitleMatchType.EXACT)
+                    BlockScope.CONTAINS_TITLE -> onConfirm(notification.title, TitleMatchType.CONTAINS)
+                    BlockScope.WHOLE_APP -> onConfirm(null, TitleMatchType.EXACT)
+                }
             }) {
                 Text("Block")
             }
@@ -66,4 +76,12 @@ fun BlockNotificationDialog(
             }
         }
     )
+}
+
+@Composable
+private fun BlockOptionRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(modifier = Modifier.padding(top = 12.dp)) {
+        RadioButton(selected = selected, onClick = onClick)
+        Text(label, modifier = Modifier.padding(start = 8.dp, top = 12.dp))
+    }
 }

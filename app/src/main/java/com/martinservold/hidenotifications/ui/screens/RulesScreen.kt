@@ -13,7 +13,9 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -26,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.martinservold.hidenotifications.data.NotificationRule
+import com.martinservold.hidenotifications.data.TitleMatchType
 import com.martinservold.hidenotifications.repository.RuleRepository
 import kotlinx.coroutines.launch
 
@@ -50,6 +53,7 @@ fun RulesScreen() {
             items(rules, key = { it.id }) { rule ->
                 RuleRow(
                     rule = rule,
+                    onToggleEnabled = { enabled -> scope.launch { ruleRepository.setEnabled(rule.id, enabled) } },
                     onDelete = { scope.launch { ruleRepository.removeRule(rule) } }
                 )
                 HorizontalDivider()
@@ -59,7 +63,9 @@ fun RulesScreen() {
 }
 
 @Composable
-private fun RuleRow(rule: NotificationRule, onDelete: () -> Unit) {
+private fun RuleRow(rule: NotificationRule, onToggleEnabled: (Boolean) -> Unit, onDelete: () -> Unit) {
+    val contentColor = if (rule.enabled) LocalContentColor.current else MaterialTheme.colorScheme.onSurfaceVariant
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -67,11 +73,11 @@ private fun RuleRow(rule: NotificationRule, onDelete: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(rule.appName, style = MaterialTheme.typography.titleSmall)
+            Text(rule.appName, style = MaterialTheme.typography.titleSmall, color = contentColor)
             Text(
-                text = rule.titleMatch?.let { "Blocking notifications titled \"$it\"" }
-                    ?: "Blocking all notifications",
-                style = MaterialTheme.typography.bodyMedium
+                text = describeScope(rule),
+                style = MaterialTheme.typography.bodyMedium,
+                color = contentColor
             )
             Text(
                 text = if (rule.dismissCount == 1) "Dismissed 1 notification" else "Dismissed ${rule.dismissCount} notifications",
@@ -79,8 +85,17 @@ private fun RuleRow(rule: NotificationRule, onDelete: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        Switch(checked = rule.enabled, onCheckedChange = onToggleEnabled)
         IconButton(onClick = onDelete) {
             Icon(Icons.Filled.Delete, contentDescription = "Remove rule")
         }
+    }
+}
+
+private fun describeScope(rule: NotificationRule): String {
+    val title = rule.titleMatch ?: return "Blocking all notifications"
+    return when (rule.matchType) {
+        TitleMatchType.EXACT -> "Blocking notifications titled \"$title\""
+        TitleMatchType.CONTAINS -> "Blocking notifications containing \"$title\""
     }
 }

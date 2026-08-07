@@ -12,6 +12,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -27,12 +30,15 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.martinservold.hidenotifications.data.TitleMatchType
 import com.martinservold.hidenotifications.model.ActiveNotification
 import com.martinservold.hidenotifications.repository.NotificationRepository
 import com.martinservold.hidenotifications.repository.RuleRepository
 import com.martinservold.hidenotifications.service.NotificationBlockerService
+import com.martinservold.hidenotifications.ui.components.BatteryOptimizationBanner
 import com.martinservold.hidenotifications.ui.components.BlockNotificationDialog
 import com.martinservold.hidenotifications.ui.components.NotificationListItem
+import com.martinservold.hidenotifications.util.isIgnoringBatteryOptimizations
 import com.martinservold.hidenotifications.util.isNotificationAccessGranted
 import kotlinx.coroutines.launch
 
@@ -41,9 +47,11 @@ fun NotificationsScreen() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var accessGranted by remember { mutableStateOf(isNotificationAccessGranted(context)) }
+    var batteryUnoptimized by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
 
     DisposableEffectRecheckOnResume(lifecycleOwner) {
         accessGranted = isNotificationAccessGranted(context)
+        batteryUnoptimized = isIgnoringBatteryOptimizations(context)
     }
 
     if (!accessGranted) {
@@ -53,7 +61,14 @@ fun NotificationsScreen() {
             }
         )
     } else {
-        LiveNotificationsList()
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (!batteryUnoptimized) {
+                BatteryOptimizationBanner(
+                    onFix = { context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+                )
+            }
+            LiveNotificationsList(modifier = Modifier.weight(1f))
+        }
     }
 }
 
@@ -96,54 +111,66 @@ private fun PermissionPrompt(onOpenSettings: () -> Unit) {
 }
 
 @Composable
-private fun LiveNotificationsList() {
+private fun LiveNotificationsList(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val ruleRepository = remember { RuleRepository.getInstance(context) }
     val notifications by NotificationRepository.activeNotifications.collectAsState()
     var pendingBlock by remember { mutableStateOf<ActiveNotification?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    if (notifications.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                "No active notifications.\nThey'll show up here as they arrive.",
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
-        }
-    } else {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(notifications.sortedByDescending { it.postTime }, key = { it.key }) { notification ->
-                NotificationListItem(notification = notification, onLongPress = { pendingBlock = it })
-                HorizontalDivider()
+    Box(modifier = modifier.fillMaxSize()) {
+        if (notifications.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    "No active notifications.\nThey'll show up here as they arrive.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(notifications.sortedByDescending { it.postTime }, key = { it.key }) { notification ->
+                    NotificationListItem(notification = notification, onLongPress = { pendingBlock = it })
+                    HorizontalDivider()
+                }
             }
         }
+
+        SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
     }
 
     pendingBlock?.let { notification ->
         BlockNotificationDialog(
             notification = notification,
             onDismiss = { pendingBlock = null },
-            onConfirm = { titleMatch ->
-                val immediateDismissCount = if (titleMatch == null) {
-                    notifications.count { it.packageName == notification.packageName }
-                } else {
-                    1
+            onConfirm = { titleMatch, matchType ->
+                val matching = notifications.filter { candidate ->
+                    candidate.packageName == notification.packageName &&
+                        ruleRepository.titleMatches(titleMatch, matchType, candidate.title)
                 }
+                matching.forEach { NotificationBlockerService.cancelNow(it.key) }
+                if (titleMatch == null) {
+                    NotificationRepository.removeAllFor(notification.packageName)
+                } else {
+                    matching.forEach { NotificationRepository.onRemoved(it.key) }
+                }
+
                 scope.launch {
                     val ruleId = ruleRepository.addRule(
                         packageName = notification.packageName,
                         appName = notification.appName,
-                        titleMatch = titleMatch
+                        titleMatch = titleMatch,
+                        matchType = matchType
                     )
-                    ruleRepository.incrementDismissCount(ruleId, immediateDismissCount)
-                }
-                if (titleMatch == null) {
-                    NotificationBlockerService.cancelAllNow(notification.packageName)
-                    NotificationRepository.removeAllFor(notification.packageName)
-                } else {
-                    NotificationBlockerService.cancelNow(notification.key)
-                    NotificationRepository.onRemoved(notification.key)
+                    ruleRepository.incrementDismissCount(ruleId, matching.size)
+
+                    val label = titleMatch?.let { "Blocked \"$it\" from ${notification.appName}" }
+                        ?: "Blocked all notifications from ${notification.appName}"
+                    val result = snackbarHostState.showSnackbar(message = label, actionLabel = "Undo")
+                    if (result == SnackbarResult.ActionPerformed) {
+                        ruleRepository.removeRuleById(ruleId)
+                    }
                 }
                 pendingBlock = null
             }

@@ -151,12 +151,5 @@ class NotificationBlockerService : NotificationListenerService() {
         fun cancelNow(key: String) {
             instance?.cancelNotification(key)
         }
-
-        fun cancelAllNow(packageName: String) {
-            val service = instance ?: return
-            service.activeNotifications
-                ?.filter { it.packageName == packageName }
-                ?.forEach { service.cancelNotification(it.key) }
-        }
     }
 }
