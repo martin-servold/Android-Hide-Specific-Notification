@@ -14,8 +14,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -54,6 +56,12 @@ class NotificationBlockerService : NotificationListenerService() {
         serviceScope.launch {
             activeNotifications?.forEach { sbn -> handlePosted(sbn) }
         }
+        serviceScope.launch {
+            while (isActive) {
+                delay(RECONCILE_INTERVAL_MS)
+                reconcileActiveNotifications()
+            }
+        }
     }
 
     override fun onListenerDisconnected() {
@@ -83,6 +91,13 @@ class NotificationBlockerService : NotificationListenerService() {
             return
         }
 
+        val isGroupSummary = sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0
+        if (isGroupSummary) {
+            // Exists only to bundle a group; the shade hides/merges it too, so don't show it as its own row.
+            NotificationRepository.onRemoved(sbn.key)
+            return
+        }
+
         val (appName, icon) = resolveAppInfo(sbn.packageName)
         NotificationRepository.onPosted(
             ActiveNotification(
@@ -95,6 +110,12 @@ class NotificationBlockerService : NotificationListenerService() {
                 postTime = sbn.postTime
             )
         )
+    }
+
+    /** Prunes anything from our in-app list that the OS no longer considers active, in case a removal event was missed. */
+    private fun reconcileActiveNotifications() {
+        val validKeys = activeNotifications?.map { it.key }?.toSet() ?: return
+        NotificationRepository.retainOnly(validKeys)
     }
 
     private fun resolveAppInfo(packageName: String): Pair<String, Bitmap?> {
@@ -121,6 +142,8 @@ class NotificationBlockerService : NotificationListenerService() {
     }
 
     companion object {
+        private const val RECONCILE_INTERVAL_MS = 60_000L
+
         @Volatile
         private var instance: NotificationBlockerService? = null
 

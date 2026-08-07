@@ -27,4 +27,9 @@ object NotificationRepository {
     fun removeAllFor(packageName: String) {
         _activeNotifications.update { current -> current.filterNot { it.packageName == packageName } }
     }
+
+    /** Drops any entry whose key is no longer in [validKeys], to self-heal from missed removal events. */
+    fun retainOnly(validKeys: Set<String>) {
+        _activeNotifications.update { current -> current.filter { it.key in validKeys } }
+    }
 }
