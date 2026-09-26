@@ -1,5 +1,5 @@
 # Android-Hide-Specific-Notification
-Long press a notification to hide that specific notification from that specific app forever. 
+Hide specific notifications from going to your notification trays. For use for "that one app" that sends annoying recurring notifications, but you can't completely turn off the notifications for it.
 
 ## License
 
